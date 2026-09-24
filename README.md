@@ -67,18 +67,7 @@ EMRS/
 ### 步驟 4：發布為網頁應用程式 (Web App API)
 1. 點擊右上角 **「部署」** ➔ **「新增部署」** ➔ 選擇 **「網頁應用程式 (Web App)」**。
 2. 誰可以存取 (Who has access)：選擇【所有人 (Anyone)】。
-3. 複製生成的 Web App URL。
-
-### 步驟 5：將 API URL 預先寫入 GitHub (實現全平台跨電腦免設定連線)
-1. 開啟 `index.html` 檔案，在 `<script>` 檔頭找到 `DEFAULT_CONFIG` 常數：
-```javascript
-const DEFAULT_CONFIG = {
-  API_URL: 'https://script.google.com/macros/s/YOUR_GAS_WEB_APP_ID/exec', // 貼上您的 Web App URL
-  GOOGLE_CLIENT_ID: '' // 選填
-};
-```
-2. 將變更儲存並 `git commit & push` 上傳至 GitHub（例如搭配 GitHub Pages 靜態網站託管）。
-3. 之後不論在任何電腦、手機或瀏覽器開啟系統，皆會自動預設帶入連線，**完全無需再於網頁上手動輸入設定 API 網址**！
+3. 複製生成的 Web App Executable URL 貼至前端 API 設定中！
 
 ---
 
