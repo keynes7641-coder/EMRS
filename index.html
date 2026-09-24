@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>設備借用管理系統 | Equipment Borrowing System</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-fontawesome/6.4.0/css/all.min.css">
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- SweetAlert2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    [v-cloak] { display: none; }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col font-sans">
+  <div id="app" v-cloak class="flex-grow flex flex-col">
+    <!-- Navbar -->
+    <header class="bg-indigo-700 text-white shadow-lg sticky top-0 z-30">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+          <!-- Logo & Brand -->
+          <div class="flex items-center space-x-3 cursor-pointer" @click="activeTab = 'catalog'">
+            <div class="bg-white/20 p-2 rounded-lg">
+              <i class="fa-solid fa-boxes-packing text-2xl text-yellow-300"></i>
+            </div>
+            <div>
+              <h1 class="text-xl font-bold tracking-wide">設備借用管理系統</h1>
+              <p class="text-xs text-indigo-200">Equipment Borrowing System</p>
+            </div>
+          </div>
+
+          <!-- Navigation Tabs -->
+          <nav class="hidden md:flex space-x-2">
+            <button @click="activeTab = 'catalog'"
+              :class="activeTab === 'catalog' ? 'bg-indigo-800 text-white shadow' : 'text-indigo-100 hover:bg-indigo-600'"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+              <i class="fa-solid fa-list-check"></i>
+              <span>設備總覽</span>
+            </button>
+
+            <button @click="activeTab = 'records'"
+              :class="activeTab === 'records' ? 'bg-indigo-800 text-white shadow' : 'text-indigo-100 hover:bg-indigo-600'"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+              <i class="fa-solid fa-clock-history"></i>
+              <span>個人借用紀錄</span>
+            </button>
+
+            <button v-if="isCurrentUserAdmin" @click="activeTab = 'admin'"
+              :class="activeTab === 'admin' ? 'bg-indigo-800 text-white shadow' : 'text-indigo-100 hover:bg-indigo-600'"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-2">
+              <i class="fa-solid fa-user-shield"></i>
+              <span>管理者後台</span>
+              <span class="w-2 h-2 bg-emerald-400 rounded-full animate-ping"></span>
+            </button>
+          </nav>
+
+          <!-- Google User Profile & API Status -->
+          <div class="flex items-center space-x-3">
+            <!-- Google User SSO Badge -->
+            <div v-if="googleUser" class="flex items-center bg-indigo-800/80 px-3 py-1.5 rounded-full border border-indigo-500/50 space-x-2">
+              <img :src="googleUser.picture || 'https://lh3.googleusercontent.com/a/default-user'" class="w-6 h-6 rounded-full border border-white/50">
+              <span class="text-xs font-bold text-white max-w-[120px] truncate">{{ googleUser.name }}</span>
+              <button @click="logoutGoogleUser" title="登出 Google 帳號" class="text-indigo-200 hover:text-rose-300 text-xs ml-1 px-1.5 py-0.5 rounded hover:bg-indigo-700/60 transition flex items-center space-x-1 border-l border-indigo-600/60">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span class="font-bold">登出</span>
+              </button>
+            </div>
+            <button v-else @click="triggerGoogleSSO"
+              class="px-3 py-1.5 bg-white text-indigo-700 hover:bg-indigo-50 rounded-full text-xs font-bold transition flex items-center space-x-1.5 shadow-sm">
+              <i class="fa-brands fa-google text-rose-500"></i>
+              <span>Google SSO 登入</span>
+            </button>
+
+            <!-- API Status Settings -->
+            <button @click="showApiModal = true"
+              class="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1 transition border"
+              :class="apiUrl ? 'bg-emerald-600/80 border-emerald-400 text-emerald-100 hover:bg-emerald-600' : 'bg-amber-600/80 border-amber-400 text-amber-100 hover:bg-amber-600'">
+              <i class="fa-solid" :class="apiUrl ? 'fa-link' : 'fa-database'"></i>
+              <span class="hidden sm:inline">{{ apiUrl ? 'GAS 雲端' : '模擬模式' }}</span>
+              <i class="fa-solid fa-gear ml-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile Navigation Bar -->
+      <div class="md:hidden flex border-t border-indigo-600 bg-indigo-800 text-xs">
+        <button @click="activeTab = 'catalog'"
+          :class="activeTab === 'catalog' ? 'bg-indigo-900 text-yellow-300 font-bold border-b-2 border-yellow-300' : 'text-indigo-200'"
+          class="flex-1 py-3 text-center">
+          <i class="fa-solid fa-list-check block text-base mb-0.5"></i> 設備總覽
+        </button>
+        <button @click="activeTab = 'records'"
+          :class="activeTab === 'records' ? 'bg-indigo-900 text-yellow-300 font-bold border-b-2 border-yellow-300' : 'text-indigo-200'"
+          class="flex-1 py-3 text-center">
+          <i class="fa-solid fa-clock-history block text-base mb-0.5"></i> 個人紀錄
+        </button>
+        <button v-if="isCurrentUserAdmin" @click="activeTab = 'admin'"
+          :class="activeTab === 'admin' ? 'bg-indigo-900 text-yellow-300 font-bold border-b-2 border-yellow-300' : 'text-indigo-200'"
+          class="flex-1 py-3 text-center">
+          <i class="fa-solid fa-user-shield block text-base mb-0.5"></i> 管理者後台
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      
+      <!-- File Protocol Warning Notice if opened directly from local disk -->
+      <div v-if="isFileProtocol" class="mb-4 bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-xl text-xs text-amber-800 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
+          <div>
+            <span class="font-bold">本地檔案模式提示 (file://)：</span>
+            Google OAuth 規範禁止於本機檔案直接開起彈出授權。若要試用 official Client ID 視窗，請透過 <code class="bg-amber-100 px-1 rounded font-mono">http://localhost:8000</code> 開啟。本地測試仍可點擊單擊 SSO 完成體驗！
+          </div>
+        </div>
+      </div>
+
+      <!-- API Mode Alert Notice if using Mock Mode -->
+      <div v-if="!apiUrl" class="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 p-4 rounded-r-xl shadow-sm flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <i class="fa-solid fa-circle-info text-2xl text-amber-500"></i>
+          <div>
+            <h4 class="font-bold text-amber-900 text-sm">目前為無伺服器展示模式 (Mock Mode)</h4>
+            <p class="text-xs text-amber-700">資料暫存於本機記憶體。若要連結真實 Google 試算表，請點擊右上角「API 設定」輸入您的 Google Apps Script Web App URL。</p>
+          </div>
+        </div>
+        <button @click="showApiModal = true" class="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-semibold hover:bg-amber-600 transition shadow">
+          設定 Web App URL
+        </button>
+      </div>
+
+      <!-- Loading Overlay -->
+      <div v-if="loading" class="flex flex-col items-center justify-center py-20">
+        <i class="fa-solid fa-spinner fa-spin text-4xl text-indigo-600 mb-3"></i>
+        <p class="text-slate-500 text-sm font-medium">資料同步中，請稍候...</p>
+      </div>
+
+      <div v-else>
+        <!-- ------------------------------------------------------------- -->
+        <!-- TAB 1: 設備總覽 (USER CATALOG) -->
+        <!-- ------------------------------------------------------------- -->
+        <section v-if="activeTab === 'catalog'" class="space-y-6">
+          <!-- Filters & Search -->
+          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <!-- Search Bar -->
+            <div class="relative w-full md:w-80">
+              <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+              <input v-model="searchQuery" type="text" placeholder="搜尋設備名稱、ID 或放置地點..."
+                class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+            </div>
+
+            <!-- Category Pills -->
+            <div class="flex flex-wrap gap-2 w-full md:w-auto">
+              <button @click="selectedCategory = ''"
+                :class="selectedCategory === '' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                class="px-3 py-1.5 rounded-full text-xs font-medium transition">
+                全部 ({{ equipmentList.length }})
+              </button>
+              <button v-for="cat in categories" :key="cat" @click="selectedCategory = cat"
+                :class="selectedCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                class="px-3 py-1.5 rounded-full text-xs font-medium transition">
+                {{ cat }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Equipment Cards Grid -->
+          <div v-if="filteredEquipment.length === 0" class="text-center py-16 bg-white rounded-xl border border-dashed border-slate-300">
+            <i class="fa-solid fa-box-open text-4xl text-slate-300 mb-2"></i>
+            <p class="text-slate-500 text-sm">沒有符合條件的設備</p>
+          </div>
+
+          <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div v-for="item in filteredEquipment" :key="item.id"
+              class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition flex flex-col justify-between">
+              <div>
+                <!-- Top Badge & ID -->
+                <div class="p-4 pb-2 flex items-center justify-between">
+                  <span class="px-2.5 py-1 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-md border border-indigo-100">
+                    {{ item.category }}
+                  </span>
+                  <span class="text-xs font-mono text-slate-400">#{{ item.id }}</span>
+                </div>
+
+                <!-- Title & Location -->
+                <div class="px-4 py-2">
+                  <h3 class="font-bold text-slate-800 text-base line-clamp-1" :title="item.name">{{ item.name }}</h3>
+                  <p class="text-xs text-slate-500 mt-1 flex items-center space-x-1">
+                    <i class="fa-solid fa-location-dot text-indigo-500"></i>
+                    <span>{{ item.location || '器材室' }}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div class="p-4 pt-2 border-t border-slate-100 bg-slate-50/50 mt-4">
+                <!-- Quantity & Stock Status -->
+                <div class="flex items-center justify-between mb-2 text-xs">
+                  <span class="text-slate-500 font-medium">即時剩餘數量:</span>
+                  <span class="font-bold text-sm" :class="{
+                    'text-emerald-600': item.available_qty > 2,
+                    'text-amber-600': item.available_qty > 0 && item.available_qty <= 2,
+                    'text-rose-600': item.available_qty == 0
+                  }">
+                    {{ item.available_qty }} / {{ item.total_qty }}
+                  </span>
+                </div>
+
+                <!-- Stock Progress Bar -->
+                <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mb-4">
+                  <div class="h-full transition-all duration-300"
+                    :style="{ width: Math.min(100, (item.available_qty / item.total_qty) * 100) + '%' }"
+                    :class="{
+                      'bg-emerald-500': item.available_qty > 2,
+                      'bg-amber-500': item.available_qty > 0 && item.available_qty <= 2,
+                      'bg-rose-500': item.available_qty == 0
+                    }">
+                  </div>
+                </div>
+
+                <!-- Action Button -->
+                <button @click="openBorrowModal(item)"
+                  :disabled="item.available_qty <= 0 || item.status !== '可借用' || hasOverdueUnreturnedRecords"
+                  class="w-full py-2 px-4 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-2"
+                  :class="hasOverdueUnreturnedRecords
+                    ? 'bg-rose-100 text-rose-600 border border-rose-300 cursor-not-allowed'
+                    : (item.available_qty > 0 && item.status === '可借用'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed')">
+                  <i class="fa-solid" :class="hasOverdueUnreturnedRecords ? 'fa-lock' : 'fa-hand-holding'"></i>
+                  <span>{{ hasOverdueUnreturnedRecords ? '權限暫停 (尚有逾期設備)' : (item.status !== '可借用' ? item.status : (item.available_qty > 0 ? '申請借用' : '已無庫存')) }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- TAB 2: 個人借用紀錄 (AUTO GOOGLE LOGIN BINDING & ADVANCED FILTERS) -->
+        <!-- ------------------------------------------------------------- -->
+        <section v-if="activeTab === 'records'" class="space-y-6">
+          <!-- 情況 A: 未登入提示卡片 -->
+          <div v-if="!googleUser" class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center max-w-xl mx-auto my-8">
+            <div class="w-16 h-16 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+              <i class="fa-solid fa-user-lock"></i>
+            </div>
+            <h2 class="text-xl font-bold text-slate-800 mb-2">請先登入 Google 帳號</h2>
+            <p class="text-slate-500 text-sm mb-6 leading-relaxed">
+              為了保障您的個人隱私與資料安全，系統直接連動您的登入身分。<br>
+              請先完成 Google 帳號登入，即可自動載入您的所有設備借用紀錄。
+            </p>
+            <button @click="showGoogleLoginModal = true" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-md inline-flex items-center space-x-2">
+              <i class="fa-brands fa-google"></i>
+              <span>立即登入 Google 帳號 (SSO)</span>
+            </button>
+          </div>
+
+          <!-- 情況 B: 已登入狀態，顯示個人資訊、篩選列與紀錄清單 -->
+          <div v-else class="space-y-6">
+            <!-- User Info & Filter Bar -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+              <!-- Top header with user profile badge -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h2 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+                    <i class="fa-solid fa-clock-rotate-left text-indigo-600"></i>
+                    <span>我的設備借用歷史紀錄</span>
+                  </h2>
+                  <p class="text-xs text-slate-500 mt-1">系統自動依據您目前登入的 Google 帳號顯示專屬紀錄 (歷史紀錄保存一年)</p>
+                </div>
+
+                <div class="flex items-center space-x-3 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 self-start sm:self-auto">
+                  <div class="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">
+                    {{ googleUser.name ? googleUser.name.charAt(0) : 'U' }}
+                  </div>
+                  <div class="text-xs">
+                    <span class="font-bold text-slate-800 block">{{ googleUser.name }}</span>
+                    <span class="text-slate-400 font-mono text-[11px]">{{ googleUser.email }}</span>
+                  </div>
+                  <button @click="logoutGoogleUser" class="text-xs text-rose-600 hover:underline font-semibold ml-2">切換</button>
+                </div>
+              </div>
+
+              <!-- Advanced Filter Controls -->
+              <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                <!-- Time Filter Pills -->
+                <div class="md:col-span-7 flex flex-wrap items-center gap-1.5">
+                  <span class="text-xs font-bold text-slate-600 mr-1 flex items-center">
+                    <i class="fa-solid fa-calendar-days text-indigo-500 mr-1"></i> 時間範圍:
+                  </span>
+                  <button @click="recordTimeFilter = 'all'"
+                    :class="recordTimeFilter === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition">全部</button>
+                  <button @click="recordTimeFilter = '1d'"
+                    :class="recordTimeFilter === '1d' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition">近一日</button>
+                  <button @click="recordTimeFilter = '1w'"
+                    :class="recordTimeFilter === '1w' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition">近一週</button>
+                  <button @click="recordTimeFilter = '1m'"
+                    :class="recordTimeFilter === '1m' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition">近一個月</button>
+                  <button @click="recordTimeFilter = 'custom'"
+                    :class="recordTimeFilter === 'custom' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                    class="px-2.5 py-1 rounded-lg text-xs font-medium transition">指定日期區間</button>
+                </div>
+
+                <!-- Equipment Category Dropdown -->
+                <div class="md:col-span-5 flex flex-col sm:flex-row items-center gap-2 justify-end">
+                  <div class="w-full sm:w-auto flex items-center space-x-2">
+                    <span class="text-xs font-bold text-slate-600 whitespace-nowrap">設備類別:</span>
+                    <select v-model="recordCategoryFilter" class="px-3 py-1.5 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                      <option value="">全部類別</option>
+                      <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Custom Date Range Picker (Shown when recordTimeFilter === 'custom') -->
+                <div v-if="recordTimeFilter === 'custom'" class="md:col-span-12 p-3 bg-indigo-50/60 rounded-lg border border-indigo-100 flex flex-wrap items-center gap-3 text-xs">
+                  <span class="font-bold text-indigo-900">自訂起訖日期:</span>
+                  <div class="flex items-center space-x-2">
+                    <label class="text-slate-600">起始日期:</label>
+                    <input v-model="recordStartDate" type="date" class="px-2 py-1 border border-slate-300 rounded bg-white text-xs">
+                  </div>
+                  <span class="text-slate-400">至</span>
+                  <div class="flex items-center space-x-2">
+                    <label class="text-slate-600">終止日期:</label>
+                    <input v-model="recordEndDate" type="date" class="px-2 py-1 border border-slate-300 rounded bg-white text-xs">
+                  </div>
+                  <button v-if="recordStartDate || recordEndDate" @click="recordStartDate = ''; recordEndDate = ''" class="text-indigo-600 hover:underline text-[11px] font-semibold">重設日期</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- User Records Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div class="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                <h3 class="font-bold text-slate-700 text-sm flex items-center space-x-2">
+                  <span>借用歷史列表</span>
+                  <span class="text-xs text-indigo-600 font-normal font-mono">({{ googleUser.email }})</span>
+                </h3>
+                <span class="text-xs text-slate-500 font-medium">顯示結果: 共 {{ filteredUserRecords.length }} 筆 (全部 {{ userRecords.length }} 筆)</span>
+              </div>
+
+              <div v-if="filteredUserRecords.length === 0" class="text-center py-12 text-slate-400 text-sm">
+                <i class="fa-solid fa-folder-open text-3xl mb-2 text-slate-300"></i>
+                <p>查無符合篩選條件的借用紀錄</p>
+              </div>
+
+              <div v-else class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-600 text-xs font-bold border-b border-slate-200">
+                      <th class="p-3.5 pl-6">紀錄編號</th>
+                      <th class="p-3.5">借用設備名稱 (借用時)</th>
+                      <th class="p-3.5">數量</th>
+                      <th class="p-3.5">申請時間</th>
+                      <th class="p-3.5">預計歸還</th>
+                      <th class="p-3.5">實際歸還</th>
+                      <th class="p-3.5 pr-6">審核狀態</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="rec in filteredUserRecords" :key="rec.record_id" class="hover:bg-slate-50 transition">
+                      <td class="p-3.5 pl-6 font-mono text-xs text-slate-500">{{ rec.record_id }}</td>
+                      <td class="p-3.5 font-bold text-slate-800">
+                        {{ rec.equipment_name || rec.equipment_id || '已刪除設備' }}
+                        <span v-if="!isEquipmentExist(rec.equipment_id)" class="ml-1 text-[11px] px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded font-normal">設備已報廢/下架</span>
+                      </td>
+                      <td class="p-3.5 font-semibold text-slate-700">{{ rec.borrow_qty }} 件</td>
+                      <td class="p-3.5 text-xs text-slate-500">{{ rec.borrow_time }}</td>
+                      <td class="p-3.5 text-xs text-slate-500">{{ rec.expected_return_time || '-' }}</td>
+                      <td class="p-3.5 text-xs text-slate-500">{{ rec.actual_return_time || '-' }}</td>
+                      <td class="p-3.5 pr-6">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center space-x-1"
+                          :class="getStatusBadgeClass(rec.status)">
+                          <span>{{ rec.status }}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------- -->
+        <!-- TAB 3: 管理者後台 (ADMIN PANEL) -->
+        <!-- ------------------------------------------------------------- -->
+        <section v-if="activeTab === 'admin'" class="space-y-6">
+          <!-- Guard View: Shown if user is not an admin -->
+          <div v-if="!isCurrentUserAdmin" class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-md border border-slate-200 mt-8 text-center">
+            <div class="w-16 h-16 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+              <i class="fa-solid fa-user-slash"></i>
+            </div>
+            <h2 class="text-xl font-bold text-slate-800 mb-2">無後台管理權限</h2>
+            <p class="text-slate-500 text-sm mb-6 leading-relaxed">
+              <template v-if="!googleUser">
+                您尚未登入 Google 帳號。請點擊右上角「Google SSO 登入」，系統驗證您的權限後即可自動載入管理者後台。
+              </template>
+              <template v-else>
+                您目前登入的 Google 帳號 (<code class="bg-slate-100 px-1 font-mono text-xs text-rose-600 font-bold">{{ googleUser.email }}</code>) 尚未登錄於管理者清單 (Admins Sheet) 中。
+              </template>
+            </p>
+            <button v-if="!googleUser" @click="showGoogleLoginModal = true" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-sm inline-flex items-center space-x-2">
+              <i class="fa-brands fa-google"></i>
+              <span>立即登入 Google 帳號 (SSO)</span>
+            </button>
+            <button v-else @click="activeTab = 'catalog'" class="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-sm transition">
+              返回設備總覽
+            </button>
+          </div>
+
+          <!-- Authenticated Admin View -->
+          <div v-else class="space-y-6">
+            <!-- Top Admin Header -->
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+              <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold">
+                  <i class="fa-solid fa-user-gear"></i>
+                </div>
+                <div>
+                  <h2 class="font-bold text-slate-800 text-base">管理者後台 ({{ adminUser.email }})</h2>
+                  <span class="text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded-full">權限: {{ adminUser.role }}</span>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <button @click="openAdminModal(adminUser)" class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-lg transition border border-indigo-200">
+                  <i class="fa-solid fa-key"></i>
+                  <span>修改我的密碼</span>
+                </button>
+                <button @click="refreshAllData" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition flex items-center space-x-1">
+                  <i class="fa-solid fa-rotate"></i>
+                  <span>重新整理</span>
+                </button>
+                <button @click="logoutAdmin" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold rounded-lg transition border border-rose-200">
+                  <i class="fa-solid fa-right-from-bracket"></i>
+                  <span>登出</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Admin Sub-tabs -->
+            <div class="flex border-b border-slate-200 space-x-6 text-sm font-bold">
+              <button @click="adminSubTab = 'records'"
+                :class="adminSubTab === 'records' ? 'border-b-2 border-indigo-600 text-indigo-600 pb-2' : 'text-slate-500 hover:text-slate-800 pb-2'">
+                <i class="fa-solid fa-clipboard-check mr-1"></i> 借還紀錄審核與管理
+              </button>
+              <button @click="adminSubTab = 'equipment'"
+                :class="adminSubTab === 'equipment' ? 'border-b-2 border-indigo-600 text-indigo-600 pb-2' : 'text-slate-500 hover:text-slate-800 pb-2'">
+                <i class="fa-solid fa-boxes-stacked mr-1"></i> 設備庫存 CRUD 管理
+              </button>
+              <button @click="adminSubTab = 'admins'"
+                :class="adminSubTab === 'admins' ? 'border-b-2 border-indigo-600 text-indigo-600 pb-2' : 'text-slate-500 hover:text-slate-800 pb-2'">
+                <i class="fa-solid fa-users-gear mr-1"></i> 管理員帳號管理
+              </button>
+            </div>
+
+            <!-- SUB-TAB 1: 借還紀錄審核 (ADMIN RECORDS) -->
+            <div v-if="adminSubTab === 'records'" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div class="p-4 border-b border-slate-200 bg-slate-50 flex flex-wrap gap-2 items-center justify-between">
+                <div class="flex space-x-1">
+                  <button v-for="st in ['全部', '待審核', '已出借', '已歸還', '已駁回']" :key="st"
+                    @click="adminRecordFilter = st"
+                    :class="adminRecordFilter === st ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'"
+                    class="px-3 py-1 rounded-md text-xs font-medium transition">
+                    {{ st }}
+                  </button>
+                </div>
+                <div class="flex items-center space-x-3">
+                  <span class="text-xs text-slate-500">顯示 {{ filteredAdminRecords.length }} 筆紀錄</span>
+                  <button @click="triggerCheckBorrowReminders" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold rounded-lg text-xs transition border border-blue-300 shadow-sm flex items-center space-x-1" title="掃描借用紀錄並寄送 7 天前與今日到期提醒 Email">
+                    <i class="fa-solid fa-envelope"></i>
+                    <span>手動發送 7天前/到期日 Email 提醒</span>
+                  </button>
+                  <button @click="triggerCleanupOldRecords" class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold rounded-lg text-xs transition border border-amber-300 shadow-sm flex items-center space-x-1" title="清理超過 1 年已歸還紀錄，並發送未歸還逾期 Mail 通知">
+                    <i class="fa-solid fa-broom"></i>
+                    <span>執行 1 年舊紀錄清理與逾期通知</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-600 text-xs font-bold border-b border-slate-200">
+                      <th class="p-3.5 pl-6">紀錄編號</th>
+                      <th class="p-3.5">申請人</th>
+                      <th class="p-3.5">設備名稱 (借用時)</th>
+                      <th class="p-3.5">數量</th>
+                      <th class="p-3.5">申請時間</th>
+                      <th class="p-3.5">預計歸還</th>
+                      <th class="p-3.5">目前狀態</th>
+                      <th class="p-3.5 text-center pr-6">快捷審核操作</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="rec in filteredAdminRecords" :key="rec.record_id" class="hover:bg-slate-50 transition">
+                      <td class="p-3.5 pl-6 font-mono text-xs text-slate-500">{{ rec.record_id }}</td>
+                      <td class="p-3.5">
+                        <div class="font-bold text-slate-800">{{ rec.user_name }}</div>
+                        <div class="text-xs text-slate-400 font-mono">{{ rec.user_email }}</div>
+                      </td>
+                      <td class="p-3.5 font-bold text-slate-800">
+                        {{ rec.equipment_name || rec.equipment_id || '已刪除設備' }}
+                        <span v-if="!isEquipmentExist(rec.equipment_id)" class="ml-1 text-[11px] px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded font-normal">設備已報廢/下架</span>
+                      </td>
+                      <td class="p-3.5 font-bold text-indigo-600">{{ rec.borrow_qty }} 件</td>
+                      <td class="p-3.5 text-xs text-slate-500">{{ rec.borrow_time }}</td>
+                      <td class="p-3.5 text-xs text-slate-500">{{ rec.expected_return_time || '-' }}</td>
+                      <td class="p-3.5">
+                        <span class="px-2.5 py-1 rounded-full text-xs font-bold inline-flex items-center space-x-1"
+                          :class="getStatusBadgeClass(rec.status)">
+                          <span>{{ rec.status }}</span>
+                        </span>
+                      </td>
+                      <td class="p-3.5 text-center pr-6 space-x-1">
+                        <!-- Approve Button (待審核) -->
+                        <button v-if="rec.status === '待審核'" @click="handleApproveRecord(rec)"
+                          class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded transition shadow-sm">
+                          <i class="fa-solid fa-check mr-1"></i> 核准借出
+                        </button>
+                        <!-- Reject Button (待審核) -->
+                        <button v-if="rec.status === '待審核'" @click="handleRejectRecord(rec)"
+                          class="px-2.5 py-1 bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold rounded transition shadow-sm">
+                          <i class="fa-solid fa-xmark mr-1"></i> 駁回
+                        </button>
+                        <!-- Return Button (已出借) -->
+                        <button v-if="rec.status === '已出借'" @click="handleReturnRecord(rec)"
+                          class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded transition shadow-sm">
+                          <i class="fa-solid fa-arrow-rotate-left mr-1"></i> 確認歸還
+                        </button>
+                        <span v-if="rec.status === '已歸還' || rec.status === '已駁回'" class="text-xs text-slate-400 italic">無可用操作</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SUB-TAB 2: 設備 CRUD 管理 (EQUIPMENT CRUD WITH CATEGORY MANAGEMENT) -->
+            <div v-if="adminSubTab === 'equipment'" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                <h3 class="font-bold text-slate-700 text-sm">設備庫存清單</h3>
+                <div class="flex items-center space-x-2">
+                  <!-- New Add Category Button -->
+                  <button @click="promptAddNewCategory" class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs transition border border-indigo-200 flex items-center space-x-1">
+                    <i class="fa-solid fa-folder-plus"></i>
+                    <span>新增類別</span>
+                  </button>
+                  <!-- Add Equipment Button -->
+                  <button @click="openEquipmentModal(null)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition shadow flex items-center space-x-1">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>新增設備</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-600 text-xs font-bold border-b border-slate-200">
+                      <th class="p-3.5 pl-6">ID</th>
+                      <th class="p-3.5">設備名稱</th>
+                      <th class="p-3.5">分類</th>
+                      <th class="p-3.5">總數量</th>
+                      <th class="p-3.5">剩餘數量</th>
+                      <th class="p-3.5">放置地點</th>
+                      <th class="p-3.5">狀態</th>
+                      <th class="p-3.5 text-center pr-6">管理操作</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="eq in equipmentList" :key="eq.id" class="hover:bg-slate-50 transition">
+                      <td class="p-3.5 pl-6 font-mono text-xs text-slate-500">#{{ eq.id }}</td>
+                      <td class="p-3.5 font-bold text-slate-800">{{ eq.name }}</td>
+                      <td class="p-3.5">
+                        <span class="px-2 py-0.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded">
+                          {{ eq.category }}
+                        </span>
+                      </td>
+                      <td class="p-3.5 font-semibold text-slate-700">{{ eq.total_qty }}</td>
+                      <td class="p-3.5 font-bold" :class="eq.available_qty > 0 ? 'text-emerald-600' : 'text-rose-600'">
+                        {{ eq.available_qty }}
+                      </td>
+                      <td class="p-3.5 text-xs text-slate-500">{{ eq.location }}</td>
+                      <td class="p-3.5">
+                        <span class="px-2 py-0.5 rounded text-xs font-bold"
+                          :class="eq.status === '可借用' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'">
+                          {{ eq.status }}
+                        </span>
+                      </td>
+                      <td class="p-3.5 text-center pr-6 space-x-2">
+                        <button @click="openEquipmentModal(eq)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs">
+                          <i class="fa-solid fa-pen-to-square"></i> 編輯
+                        </button>
+                        <button @click="deleteEquipmentItem(eq)" class="text-rose-600 hover:text-rose-900 font-semibold text-xs">
+                          <i class="fa-solid fa-trash"></i> 刪除
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- SUB-TAB 3: 管理員帳號管理 (ADMIN ACCOUNTS MANAGEMENT) -->
+            <div v-if="adminSubTab === 'admins'" class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+              <div class="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                <div>
+                  <h3 class="font-bold text-slate-700 text-sm">系統管理者清單 (Admins Sheet)</h3>
+                  <p class="text-xs text-slate-500 mt-0.5">您可以在此新增後端管理帳號、修改管理者密碼或變更權限</p>
+                </div>
+                <button @click="openAdminModal(null)" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition shadow flex items-center space-x-1">
+                  <i class="fa-solid fa-user-plus"></i>
+                  <span>新增管理員帳號</span>
+                </button>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-sm">
+                  <thead>
+                    <tr class="bg-slate-100 text-slate-600 text-xs font-bold border-b border-slate-200">
+                      <th class="p-3.5 pl-6">管理員 Email</th>
+                      <th class="p-3.5">系統權限角色</th>
+                      <th class="p-3.5">密碼狀態</th>
+                      <th class="p-3.5 text-center pr-6">管理操作</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100">
+                    <tr v-for="adm in adminList" :key="adm.email" class="hover:bg-slate-50 transition">
+                      <td class="p-3.5 pl-6 font-bold text-slate-800 font-mono">
+                        {{ adm.email }}
+                        <span v-if="adm.email.toLowerCase() === adminUser.email.toLowerCase()" class="ml-2 text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 font-bold rounded">目前使用者</span>
+                      </td>
+                      <td class="p-3.5">
+                        <span class="px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded border border-emerald-200">
+                          {{ adm.role || 'Manager' }}
+                        </span>
+                      </td>
+                      <td class="p-3.5 text-xs text-slate-400 font-mono">••••••••</td>
+                      <td class="p-3.5 text-center pr-6 space-x-3">
+                        <button @click="openAdminModal(adm)" class="text-indigo-600 hover:text-indigo-900 font-semibold text-xs">
+                          <i class="fa-solid fa-key"></i> 修改密碼/權限
+                        </button>
+                        <button @click="deleteAdminAccount(adm)" class="text-rose-600 hover:text-rose-900 font-semibold text-xs">
+                          <i class="fa-solid fa-user-minus"></i> 刪除帳號
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- MODAL 0: Google 登入 Modal (GOOGLE LOGIN MODAL) -->
+    <!-- ------------------------------------------------------------- -->
+    <div v-if="showGoogleLoginModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div class="bg-white p-6 border-b border-slate-100 text-center relative">
+          <button @click="showGoogleLoginModal = false" class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 text-lg">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+          <div class="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner">
+            <i class="fa-brands fa-google text-3xl text-rose-500"></i>
+          </div>
+          <h3 class="font-bold text-lg text-slate-800">Google SSO 單一簽入驗證</h3>
+          <p class="text-xs text-slate-500 mt-1">申請借用設備需驗證您的 Google 身分，姓名與 Email 將自動帶入</p>
+        </div>
+
+        <div class="p-6">
+          <!-- Real Google OAuth SSO Popup Button -->
+          <button @click="triggerGoogleOAuthPopup" class="w-full py-3.5 bg-white hover:bg-indigo-50 text-slate-800 font-bold border-2 border-slate-300 hover:border-indigo-500 rounded-xl transition shadow-sm flex items-center justify-center space-x-3 text-sm">
+            <i class="fa-brands fa-google text-rose-500 text-xl"></i>
+            <span>彈出 Google 官方帳號授權視窗 (SSO)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- MODAL 1: 申請借用 Modal (BORROW MODAL) -->
+    <!-- ------------------------------------------------------------- -->
+    <div v-if="showBorrowModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+        <div class="bg-indigo-700 text-white p-5 flex items-center justify-between">
+          <h3 class="font-bold text-base flex items-center space-x-2">
+            <i class="fa-solid fa-file-signature"></i>
+            <span>填寫借用申請單</span>
+          </h3>
+          <button @click="showBorrowModal = false" class="text-indigo-200 hover:text-white text-lg">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <form @submit.prevent="submitBorrowRequest" class="p-6 space-y-4">
+          <!-- Equipment Info Card -->
+          <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <div class="text-xs text-indigo-600 font-semibold mb-0.5">欲借用設備</div>
+            <div class="font-bold text-slate-800 text-base">{{ targetEquipment?.name }}</div>
+            <div class="text-xs text-slate-500 mt-1 flex justify-between">
+              <span>地點: {{ targetEquipment?.location }}</span>
+              <span class="font-bold text-emerald-600">剩餘數量: {{ targetEquipment?.available_qty }}</span>
+            </div>
+          </div>
+
+          <!-- Google Authenticated Badge -->
+          <div class="bg-emerald-50 border border-emerald-200 p-2.5 rounded-lg flex items-center justify-between text-xs">
+            <div class="flex items-center space-x-2">
+              <i class="fa-brands fa-google text-emerald-600 text-sm"></i>
+              <div>
+                <span class="font-bold text-emerald-900">已通過 Google SSO 驗證</span>
+                <span class="text-emerald-700 block text-[11px]">個人資訊已自動帶入且防篡改</span>
+              </div>
+            </div>
+            <button type="button" @click="logoutGoogleUser" class="text-emerald-700 hover:underline text-[11px]">切換帳號</button>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">申請人姓名 (Google SSO)</label>
+            <div class="relative">
+              <input v-model="borrowForm.user_name" type="text" required readonly
+                class="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-700 font-semibold outline-none cursor-not-allowed">
+              <i class="fa-solid fa-lock absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">申請人 Email (Google SSO)</label>
+            <div class="relative">
+              <input v-model="borrowForm.user_email" type="email" required readonly
+                class="w-full px-3 py-2 bg-slate-100 border border-slate-300 rounded-lg text-sm text-slate-700 font-semibold font-mono outline-none cursor-not-allowed">
+              <i class="fa-solid fa-lock absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">借用數量 *</label>
+              <input v-model.number="borrowForm.borrow_qty" type="number" min="1" :max="targetEquipment?.available_qty" required
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">預計歸還日期 *</label>
+              <input v-model="borrowForm.expected_return_time" type="date" required
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+
+          <div class="pt-3 flex space-x-3">
+            <button type="button" @click="showBorrowModal = false" class="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-sm transition">
+              取消
+            </button>
+            <button type="submit" class="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition shadow">
+              送出申請
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- MODAL 2: 設備編輯/新增 Modal (EQUIPMENT EDIT MODAL WITH CATEGORY DROPDOWN) -->
+    <!-- ------------------------------------------------------------- -->
+    <div v-if="showEqModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+        <div class="bg-indigo-700 text-white p-5 flex items-center justify-between">
+          <h3 class="font-bold text-base">
+            {{ isEditEq ? '編輯設備資料' : '新增設備' }}
+          </h3>
+          <button @click="showEqModal = false" class="text-indigo-200 hover:text-white text-lg">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <form @submit.prevent="saveEquipment" class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">設備名稱 *</label>
+            <input v-model="eqForm.name" type="text" required placeholder="設備名稱"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+
+          <!-- Dynamic Category Select Dropdown with On-the-fly Add -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-bold text-slate-700">設備分類 *</label>
+              <button type="button" @click="promptAddNewCategory" class="text-[11px] text-indigo-600 hover:underline font-bold flex items-center space-x-1">
+                <i class="fa-solid fa-plus-circle"></i>
+                <span>新增新類別</span>
+              </button>
+            </div>
+            <select v-model="eqForm.category" @change="onCategorySelectChange" required
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+              <option value="" disabled>-- 請選擇設備分類 --</option>
+              <option v-for="cat in allCategories" :key="cat" :value="cat">{{ cat }}</option>
+              <option value="__NEW_CATEGORY__" class="font-bold text-indigo-600 bg-indigo-50">+ 即時新增新類別...</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">總數量 *</label>
+              <input v-model.number="eqForm.total_qty" type="number" min="1" required
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">即時剩餘數量 *</label>
+              <input v-model.number="eqForm.available_qty" type="number" min="0" required
+                class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">存放地點</label>
+            <input v-model="eqForm.location" type="text" placeholder="創客中心 A101"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">狀態</label>
+            <select v-model="eqForm.status" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="可借用">可借用</option>
+              <option value="維修中">維修中</option>
+              <option value="報廢">報廢</option>
+            </select>
+          </div>
+
+          <div class="pt-3 flex space-x-3">
+            <button type="button" @click="showEqModal = false" class="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-sm transition">
+              取消
+            </button>
+            <button type="submit" class="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition shadow">
+              儲存設備
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- MODAL 3: 管理員帳號新增/修改 Modal (ADMIN ACCOUNT MODAL) -->
+    <!-- ------------------------------------------------------------- -->
+    <div v-if="showAdminModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden">
+        <div class="bg-indigo-700 text-white p-5 flex items-center justify-between">
+          <h3 class="font-bold text-base flex items-center space-x-2">
+            <i class="fa-solid fa-user-gear"></i>
+            <span>{{ isEditAdmin ? '修改管理員密碼/資料' : '新增管理員帳號' }}</span>
+          </h3>
+          <button @click="showAdminModal = false" class="text-indigo-200 hover:text-white text-lg">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <form @submit.prevent="saveAdminAccount" class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">管理員 Email *</label>
+            <input v-model="adminAccForm.email" type="email" required :disabled="isEditAdmin"
+              placeholder="manager@example.com"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              {{ isEditAdmin ? '新密碼 (若留空表示不修改)' : '設定密碼 *' }}
+            </label>
+            <input v-model="adminAccForm.password" type="password" :required="!isEditAdmin"
+              placeholder="••••••••"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">系統權限角色</label>
+            <select v-model="adminAccForm.role" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="SuperAdmin">SuperAdmin (超級管理者)</option>
+              <option value="Manager">Manager (一般管理者)</option>
+            </select>
+          </div>
+
+          <div class="pt-3 flex space-x-3">
+            <button type="button" @click="showAdminModal = false" class="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-sm transition">
+              取消
+            </button>
+            <button type="submit" class="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition shadow">
+              {{ isEditAdmin ? '更新密碼與資料' : '確定建立帳號' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------- -->
+    <!-- MODAL 4: API 設定 Modal (API URL SETTINGS MODAL) -->
+    <!-- ------------------------------------------------------------- -->
+    <div v-if="showApiModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full overflow-hidden">
+        <div class="bg-indigo-700 text-white p-5 flex items-center justify-between">
+          <h3 class="font-bold text-base flex items-center space-x-2">
+            <i class="fa-solid fa-gears"></i>
+            <span>Google Apps Script API & OAuth 設定</span>
+          </h3>
+          <button @click="showApiModal = false" class="text-indigo-200 hover:text-white text-lg">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Web App API URL (Google Apps Script)</label>
+            <input v-model="inputApiUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">Google OAuth Client ID (選填)</label>
+            <input v-model="inputGoogleClientId" type="text" placeholder="YOUR_CLIENT_ID.apps.googleusercontent.com"
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-500 font-mono">
+            <p class="text-[11px] text-slate-400 mt-1">填入 Google Cloud Console 設定之 OAuth Client ID 可直接觸發官方 SSO 登入視窗。</p>
+          </div>
+
+          <div class="flex flex-col gap-2 pt-2">
+            <button @click="saveApiUrl" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-sm transition shadow">
+              儲存設定並重載系統
+            </button>
+
+            <button v-if="apiUrl" @click="triggerGasSetup" class="w-full py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg text-xs transition border border-emerald-300">
+              <i class="fa-solid fa-database mr-1"></i> 初始化 GAS 試算表 (自動建立 Sheet 頁籤)
+            </button>
+
+            <button @click="clearApiUrl" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg text-xs transition">
+              切回「無伺服器展示模式 (Mock Mode)」
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 mt-auto">
+      設備借用管理系統 &copy; 2026 Powered by Google Apps Script & Google Sheets
+    </footer>
+  </div>
+
+  <script>
+    const { createApp, ref, computed, onMounted } = Vue;
+
+    // 預設 Mock Data (無 API 時展示用)
+    const MOCK_EQUIPMENT = [
+      { id: 'EQ-1001', name: 'MacBook Pro 16吋 M2', category: '筆記型電腦', total_qty: 5, available_qty: 4, location: '創客中心 A101', status: '可借用' },
+      { id: 'EQ-1002', name: 'Sony Alpha 7 IV 相機', category: '攝影器材', total_qty: 3, available_qty: 2, location: '視聽教室 B202', status: '可借用' },
+      { id: 'EQ-1003', name: 'Epson 無線投影機 EH-TW740', category: '視聽設備', total_qty: 4, available_qty: 4, location: '器材室 C301', status: '可借用' },
+      { id: 'EQ-1004', name: 'DJI Ronin RS3 穩定器', category: '攝影器材', total_qty: 2, available_qty: 1, location: '視聽教室 B202', status: '可借用' },
+      { id: 'EQ-1005', name: 'iPad Pro 12.9吋 (含Apple Pencil)', category: '平板電腦', total_qty: 8, available_qty: 6, location: '創客中心 A101', status: '可借用' },
+      { id: 'EQ-1006', name: 'Rode Wireless GO II 無線麥克風', category: '音響設備', total_qty: 4, available_qty: 3, location: '器材室 C301', status: '可借用' }
+    ];
+
+    const MOCK_RECORDS = [
+      { record_id: 'REC-20260801-01', user_name: '王小明', user_email: 'ming@gmail.com', equipment_id: 'EQ-1001', equipment_name: 'MacBook Pro 16吋 M2', borrow_qty: 1, borrow_time: '2026-08-01 10:30', expected_return_time: '2026-08-08', actual_return_time: '', status: '已出借' },
+      { record_id: 'REC-20260801-02', user_name: '教務管理者', user_email: 'wzmit@wzm.kh.edu.tw', equipment_id: 'EQ-1002', equipment_name: 'Sony Alpha 7 IV 相機', borrow_qty: 1, borrow_time: '2026-08-02 14:00', expected_return_time: '2026-08-09', actual_return_time: '', status: '待審核' }
+    ];
+
+    const MOCK_ADMINS = [
+      { email: 'admin@example.com', role: 'SuperAdmin' },
+      { email: 'manager@example.com', role: 'Manager' },
+      { email: 'ming@gmail.com', role: 'SuperAdmin' },
+      { email: 'wzmit@wzm.kh.edu.tw', role: 'SuperAdmin' }
+    ];
+
+    createApp({
+      setup() {
+        const isFileProtocol = ref(window.location.protocol === 'file:');
+        const activeTab = ref('catalog');
+        const loading = ref(false);
+        const apiUrl = ref(localStorage.getItem('emrs_api_url') || '');
+        const inputApiUrl = ref(apiUrl.value);
+        const googleClientId = ref(localStorage.getItem('emrs_google_client_id') || '');
+        const inputGoogleClientId = ref(googleClientId.value);
+        const showApiModal = ref(false);
+
+        // Custom categories added by admin
+        const customCategories = ref(JSON.parse(localStorage.getItem('emrs_custom_categories') || '[]'));
+
+        // Google Authentication State
+        const googleUser = ref(JSON.parse(localStorage.getItem('emrs_google_user') || 'null'));
+        const showGoogleLoginModal = ref(false);
+        const pendingEquipmentToBorrow = ref(null);
+        const customGoogleUser = ref({ name: '', email: '' });
+
+        // Data arrays
+        const equipmentList = ref([]);
+        const recordsList = ref([]);
+        const adminList = ref([]);
+        const userRecords = ref([]);
+
+        // User Search & Filter
+        const searchQuery = ref('');
+        const selectedCategory = ref('');
+        const userQueryEmail = ref(googleUser.value ? googleUser.value.email : (localStorage.getItem('emrs_user_email') || 'ming@gmail.com'));
+
+        // Personal Borrowing Records Filter State
+        const recordTimeFilter = ref('all'); // 'all', '1d', '1w', '1m', 'custom'
+        const recordStartDate = ref('');
+        const recordEndDate = ref('');
+        const recordCategoryFilter = ref(''); // '' for all
+
+        // Borrow Modal
+        const showBorrowModal = ref(false);
+        const targetEquipment = ref(null);
+        const borrowForm = ref({
+          user_name: '',
+          user_email: '',
+          borrow_qty: 1,
+          expected_return_time: ''
+        });
+
+        // Check if the logged-in Google SSO user is an authorized admin in adminList (Admins Sheet)
+        const isCurrentUserAdmin = computed(() => {
+          if (!googleUser.value || !googleUser.value.email) return false;
+          const email = String(googleUser.value.email).toLowerCase().trim();
+          return adminList.value.some(a => String(a.email).toLowerCase().trim() === email);
+        });
+
+        // Dynamic adminUser object based on Google SSO user authority
+        const adminUser = computed(() => {
+          if (!isCurrentUserAdmin.value) return null;
+          const email = String(googleUser.value.email).toLowerCase().trim();
+          const found = adminList.value.find(a => String(a.email).toLowerCase().trim() === email);
+          return {
+            email: googleUser.value.email,
+            role: found ? (found.role || 'SuperAdmin') : 'SuperAdmin'
+          };
+        });
+
+        const loginForm = ref({ email: '', password: '' });
+        const adminSubTab = ref('records');
+        const adminRecordFilter = ref('全部');
+
+        // Equipment CRUD Modal
+        const showEqModal = ref(false);
+        const isEditEq = ref(false);
+        const eqForm = ref({ id: '', name: '', category: '', total_qty: 1, available_qty: 1, location: '', status: '可借用' });
+
+        // Admin Accounts CRUD Modal
+        const showAdminModal = ref(false);
+        const isEditAdmin = ref(false);
+        const adminAccForm = ref({ email: '', password: '', role: 'Manager' });
+
+        // Helper: Check if equipment currently exists in active equipment list
+        const isEquipmentExist = (eqId) => {
+          return equipmentList.value.some(e => String(e.id) === String(eqId));
+        };
+
+        // Computed: All unique Categories (from equipment + custom added)
+        const categories = computed(() => {
+          const cats = equipmentList.value.map(e => e.category).filter(Boolean);
+          const merged = [...cats, ...customCategories.value];
+          return [...new Set(merged)];
+        });
+
+        const allCategories = computed(() => categories.value);
+
+        // Prompt to add a new category directly
+        const promptAddNewCategory = async () => {
+          const { value: newCategory } = await Swal.fire({
+            title: '新增設備類別',
+            text: '請輸入新的設備分類名稱 (例如: 3D列印設備、VR虛擬頭盔)',
+            input: 'text',
+            inputPlaceholder: '請輸入類別名稱...',
+            showCancelButton: true,
+            confirmButtonText: '確定新增',
+            cancelButtonText: '取消',
+            inputValidator: (val) => {
+              if (!val || !val.trim()) return '類別名稱不可為空！';
+              if (allCategories.value.includes(val.trim())) return '該類別名稱已存在！';
+            }
+          });
+
+          if (newCategory && newCategory.trim()) {
+            const catName = newCategory.trim();
+            if (!customCategories.value.includes(catName)) {
+              customCategories.value.push(catName);
+              localStorage.setItem('emrs_custom_categories', JSON.stringify(customCategories.value));
+            }
+            
+            if (showEqModal.value) {
+              eqForm.value.category = catName;
+            }
+
+            Swal.fire({
+              toast: true,
+              position: 'top-end',
+              icon: 'success',
+              title: `新類別「${catName}」已成功新增`,
+              showConfirmButton: false,
+              timer: 1800
+            });
+          } else if (showEqModal.value && eqForm.value.category === '__NEW_CATEGORY__') {
+            eqForm.value.category = allCategories.value[0] || '筆記型電腦';
+          }
+        };
+
+        const onCategorySelectChange = () => {
+          if (eqForm.value.category === '__NEW_CATEGORY__') {
+            promptAddNewCategory();
+          }
+        };
+
+        // Filtered equipment for catalog
+        const filteredEquipment = computed(() => {
+          return equipmentList.value.filter(item => {
+            const matchCat = !selectedCategory.value || item.category === selectedCategory.value;
+            const q = searchQuery.value.toLowerCase().trim();
+            const matchQuery = !q ||
+              String(item.name).toLowerCase().includes(q) ||
+              String(item.id).toLowerCase().includes(q) ||
+              String(item.location).toLowerCase().includes(q);
+            return matchCat && matchQuery;
+          });
+        });
+
+        // Filtered records for admin
+        const filteredAdminRecords = computed(() => {
+          if (adminRecordFilter.value === '全部') return recordsList.value;
+          return recordsList.value.filter(r => r.status === adminRecordFilter.value);
+        });
+
+        // Filtered user records for logged-in user with time & category filters
+        const filteredUserRecords = computed(() => {
+          if (!googleUser.value || !googleUser.value.email) {
+            return [];
+          }
+
+          let baseRecords = userRecords.value;
+
+          // Filter by category
+          if (recordCategoryFilter.value) {
+            baseRecords = baseRecords.filter(rec => {
+              const eq = equipmentList.value.find(e => String(e.id) === String(rec.equipment_id));
+              const cat = eq ? eq.category : (rec.category || '');
+              return cat === recordCategoryFilter.value;
+            });
+          }
+
+          // Filter by time range
+          if (recordTimeFilter.value !== 'all') {
+            const now = new Date().getTime();
+            baseRecords = baseRecords.filter(rec => {
+              if (!rec.borrow_time) return false;
+              const bTime = Date.parse(rec.borrow_time.replace(/-/g, '/'));
+              if (isNaN(bTime)) return false;
+
+              const diff = now - bTime;
+              if (recordTimeFilter.value === '1d') return diff <= 86400000;
+              if (recordTimeFilter.value === '1w') return diff <= 7 * 86400000;
+              if (recordTimeFilter.value === '1m') return diff <= 30 * 86400000;
+              if (recordTimeFilter.value === 'custom') {
+                if (recordStartDate.value) {
+                  const sTime = Date.parse(recordStartDate.value.replace(/-/g, '/') + ' 00:00:00');
+                  if (bTime < sTime) return false;
+                }
+                if (recordEndDate.value) {
+                  const eTime = Date.parse(recordEndDate.value.replace(/-/g, '/') + ' 23:59:59');
+                  if (bTime > eTime) return false;
+                }
+                return true;
+              }
+              return true;
+            });
+          }
+
+          return baseRecords;
+        });
+
+        // Overdue Unreturned Records Computed Property & Alert Mechanism
+        const overdueRecordsList = computed(() => {
+          if (!googleUser.value || !googleUser.value.email) return [];
+          const todayMidnight = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+          const userEmail = String(googleUser.value.email).toLowerCase().trim();
+
+          return recordsList.value.filter(rec => {
+            if (String(rec.user_email).toLowerCase().trim() !== userEmail) return false;
+            if (rec.status !== '已出借' || !rec.expected_return_time) return false;
+            const expDate = new Date(rec.expected_return_time.replace(/-/g, '/'));
+            if (isNaN(expDate.getTime())) return false;
+            const expMidnight = new Date(expDate.getFullYear(), expDate.getMonth(), expDate.getDate()).getTime();
+            return expMidnight < todayMidnight;
+          });
+        });
+
+        const hasOverdueUnreturnedRecords = computed(() => {
+          return overdueRecordsList.value.length > 0;
+        });
+
+        const checkOverdueAlert = () => {
+          if (googleUser.value && hasOverdueUnreturnedRecords.value) {
+            const listHtml = overdueRecordsList.value.map(r => 
+              `<li class="text-left font-semibold">· ${r.equipment_name || r.equipment_id} (${r.borrow_qty}件) - 預計歸還: <span class="text-rose-600 font-bold">${r.expected_return_time}</span></li>`
+            ).join('');
+
+            Swal.fire({
+              title: '⚠️ 設備逾期未歸還警告',
+              html: `<div class="space-y-3">
+                <p class="text-rose-600 font-bold">您目前尚有 ${overdueRecordsList.value.length} 筆設備已超過預計歸還日期尚未歸還！</p>
+                <p class="text-xs text-slate-600">依系統規範，您的設備借用權限已<strong class="text-rose-600">暫時凍結</strong>，請儘速歸還下列設備：</p>
+                <ul class="bg-rose-50 p-3 rounded-lg border border-rose-200 text-xs space-y-1">
+                  ${listHtml}
+                </ul>
+                <p class="text-xs text-slate-500">歸還後，待管理者於後台點選「確認歸還」，系統將自動恢復您的借用權限。</p>
+              </div>`,
+              icon: 'warning',
+              confirmButtonText: '我知道了',
+              confirmButtonColor: '#e11d48'
+            });
+          }
+        };
+
+        // Trigger Google SSO
+        const triggerGoogleSSO = () => {
+          if (googleUser.value) return;
+          showGoogleLoginModal.value = true;
+        };
+
+        // Real Google OAuth SSO Popup Client
+        const triggerGoogleOAuthPopup = () => {
+          if (window.location.protocol === 'file:') {
+            Swal.fire({
+              title: 'Google OAuth 安全規範提醒',
+              html: `Google 官方安全性規範<strong>不允許從本地檔案網頁 (<code class="bg-amber-100 text-rose-700 px-1 font-mono">file://</code>) 直接跳出 OAuth 授權視窗</strong>。<br><br>
+              <strong>💡 如何進行官方 SSO 登入？</strong><br>
+              1. 使用本地 Web 伺服器開啟本頁面 (如：<code class="bg-slate-100 px-1 font-mono">http://localhost:8000</code>)。<br>
+              2. 將本頁面部署至 GitHub Pages、Vercel 或學校內部網域。`,
+              icon: 'warning',
+              confirmButtonText: '了解'
+            });
+            return;
+          }
+
+          if (window.google && window.google.accounts && window.google.accounts.oauth2 && googleClientId.value) {
+            try {
+              const client = google.accounts.oauth2.initTokenClient({
+                client_id: googleClientId.value,
+                scope: 'email profile',
+                callback: (tokenRes) => {
+                  if (tokenRes.access_token) {
+                    fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                      headers: { Authorization: `Bearer ${tokenRes.access_token}` }
+                    })
+                    .then(res => res.json())
+                    .then(profile => {
+                      handleGoogleLoginSuccess({
+                        name: profile.name || profile.given_name || 'Google 使用者',
+                        email: profile.email,
+                        picture: profile.picture
+                      });
+                    });
+                  }
+                }
+              });
+              client.requestAccessToken();
+              return;
+            } catch (e) {
+              console.warn('GIS error:', e);
+            }
+          }
+
+          Swal.fire({
+            title: 'Google OAuth Client ID 未設定',
+            text: '請點擊右上角「⚙️ API 設定」填入您的 Google Client ID 即可進行官方 Google SSO 單一簽入驗證！',
+            icon: 'info'
+          });
+        };
+
+        // Google Login Actions
+        const selectGoogleAccount = (name, email, picture) => {
+          const profile = { name, email, picture };
+          handleGoogleLoginSuccess(profile);
+        };
+
+        const loginCustomGoogleUser = () => {
+          if (!customGoogleUser.value.name || !customGoogleUser.value.email) {
+            Swal.fire('請填寫完整', '請輸入 Google 姓名與 Email', 'warning');
+            return;
+          }
+          const profile = {
+            name: customGoogleUser.value.name,
+            email: customGoogleUser.value.email,
+            picture: 'https://lh3.googleusercontent.com/a/default-user'
+          };
+          handleGoogleLoginSuccess(profile);
+        };
+
+        const handleGoogleLoginSuccess = (profile) => {
+          googleUser.value = profile;
+          localStorage.setItem('emrs_google_user', JSON.stringify(profile));
+          localStorage.setItem('emrs_user_email', profile.email);
+          userQueryEmail.value = profile.email;
+          showGoogleLoginModal.value = false;
+
+          Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: `Google SSO 登入成功！`,
+            text: `已登入為: ${profile.name} (${profile.email})`,
+            showConfirmButton: false,
+            timer: 2000
+          });
+
+          fetchRecordsByEmail();
+          checkOverdueAlert();
+
+          if (pendingEquipmentToBorrow.value) {
+            const item = pendingEquipmentToBorrow.value;
+            pendingEquipmentToBorrow.value = null;
+            openBorrowModal(item);
+          }
+        };
+
+        const logoutGoogleUser = () => {
+          googleUser.value = null;
+          localStorage.removeItem('emrs_google_user');
+          Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: '已登出 Google 帳號', showConfirmButton: false, timer: 1500 });
+        };
+
+        // Admin Google SSO Login
+        const loginAdminWithGoogleSSO = () => {
+          if (!googleUser.value) {
+            showGoogleLoginModal.value = true;
+            return;
+          }
+
+          const userEmail = googleUser.value.email.toLowerCase();
+          const matchedAdmin = adminList.value.find(a => String(a.email).toLowerCase() === userEmail);
+
+          if (matchedAdmin) {
+            adminUser.value = { email: matchedAdmin.email, role: matchedAdmin.role || 'SuperAdmin' };
+            localStorage.setItem('emrs_admin_user', JSON.stringify(adminUser.value));
+            Swal.fire('Google SSO 驗證成功', `授權通過！管理者: ${matchedAdmin.email}`, 'success');
+          } else {
+            Swal.fire({
+              title: '未授權管理者',
+              html: `您的 Google 帳號 <code class="bg-slate-100 px-1 font-mono">${googleUser.value.email}</code> 尚未登錄於管理者清單 (Admins Sheet) 中。<br><br><span class="text-xs text-slate-500">請聯繫超級管理者於試算表中加入您的 Email (如 ${googleUser.value.email}) 即可直接 SSO 登入！</span>`,
+              icon: 'error'
+            });
+          }
+        };
+
+        // Open Borrow Modal (With Overdue Freeze Guard)
+        const openBorrowModal = (item) => {
+          if (hasOverdueUnreturnedRecords.value) {
+            checkOverdueAlert();
+            return;
+          }
+
+          targetEquipment.value = item;
+          if (!googleUser.value) {
+            pendingEquipmentToBorrow.value = item;
+            showGoogleLoginModal.value = true;
+            return;
+          }
+
+          borrowForm.value = {
+            user_name: googleUser.value.name,
+            user_email: googleUser.value.email,
+            borrow_qty: 1,
+            expected_return_time: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]
+          };
+          showBorrowModal.value = true;
+        };
+
+        // Initialize & Fetch data
+        const loadInitialData = async () => {
+          loading.value = true;
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(`${apiUrl.value}?action=getEquipment`);
+              const json = await res.json();
+              if (json.success) {
+                equipmentList.value = json.data;
+              } else {
+                throw new Error(json.message);
+              }
+
+              const resRec = await fetch(`${apiUrl.value}?action=getRecords`);
+              const jsonRec = await resRec.json();
+              if (jsonRec.success) {
+                recordsList.value = jsonRec.data;
+              }
+
+              const resAdm = await fetch(`${apiUrl.value}?action=getAdmins`);
+              const jsonAdm = await resAdm.json();
+              if (jsonAdm.success) {
+                adminList.value = jsonAdm.data;
+              }
+
+            } catch (err) {
+              console.warn('API error, falling back to mock data:', err);
+              Swal.fire('API 連線失敗', '無法連接指定 GAS URL，現已切換為本地模擬資料', 'warning');
+              equipmentList.value = [...MOCK_EQUIPMENT];
+              recordsList.value = [...MOCK_RECORDS];
+              adminList.value = [...MOCK_ADMINS];
+            }
+          } else {
+            equipmentList.value = [...MOCK_EQUIPMENT];
+            recordsList.value = [...MOCK_RECORDS];
+            adminList.value = [...MOCK_ADMINS];
+          }
+          loading.value = false;
+          await fetchRecordsByEmail();
+          checkOverdueAlert();
+        };
+
+        const refreshAllData = async () => {
+          await loadInitialData();
+          Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: '資料已成功更新', showConfirmButton: false, timer: 1500 });
+        };
+
+        // User Record Search
+        const fetchRecordsByEmail = async () => {
+          if (!userQueryEmail.value) {
+            userRecords.value = [];
+            return;
+          }
+          localStorage.setItem('emrs_user_email', userQueryEmail.value);
+          const email = userQueryEmail.value.toLowerCase().trim();
+
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(`${apiUrl.value}?action=getRecords&email=${encodeURIComponent(email)}`);
+              const json = await res.json();
+              if (json.success) {
+                userRecords.value = json.data;
+                return;
+              }
+            } catch (e) { console.error(e); }
+          }
+
+          userRecords.value = recordsList.value.filter(r => String(r.user_email).toLowerCase() === email);
+        };
+
+        // Submit Borrow Request (Pass equipment_name in payload to permanently record it)
+        const submitBorrowRequest = async () => {
+          if (borrowForm.value.borrow_qty > targetEquipment.value.available_qty) {
+            Swal.fire('無法提交', '申請數量超過目前剩餘庫存', 'error');
+            return;
+          }
+
+          loading.value = true;
+          const payload = {
+            action: 'createBorrow',
+            user_name: borrowForm.value.user_name,
+            user_email: borrowForm.value.user_email,
+            equipment_id: targetEquipment.value.id,
+            equipment_name: targetEquipment.value.name, // Record exact equipment name at borrow time
+            borrow_qty: borrowForm.value.borrow_qty,
+            expected_return_time: borrowForm.value.expected_return_time
+          };
+
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+              });
+              const json = await res.json();
+              if (!json.success) throw new Error(json.message);
+              
+              showBorrowModal.value = false;
+              Swal.fire('借用申請已送出', json.message || '請等待管理者審核', 'success');
+              await loadInitialData();
+              return;
+            } catch (err) {
+              Swal.fire('提交失敗', err.message, 'error');
+              loading.value = false;
+              return;
+            }
+          }
+
+          const newRec = {
+            record_id: 'REC-' + Date.now(),
+            user_name: payload.user_name,
+            user_email: payload.user_email,
+            equipment_id: payload.equipment_id,
+            equipment_name: targetEquipment.value.name,
+            borrow_qty: payload.borrow_qty,
+            borrow_time: new Date().toLocaleString(),
+            expected_return_time: payload.expected_return_time,
+            actual_return_time: '',
+            status: '待審核'
+          };
+          recordsList.value.unshift(newRec);
+          localStorage.setItem('emrs_user_email', payload.user_email);
+          userQueryEmail.value = payload.user_email;
+
+          showBorrowModal.value = false;
+          loading.value = false;
+          Swal.fire('借用申請已送出 (模擬)', '已產生「待審核」紀錄！請切換至管理者後台進行審核。', 'success');
+          fetchRecordsByEmail();
+        };
+
+        // Admin Auth
+        const loginAdmin = async () => {
+          if (apiUrl.value) {
+            try {
+              loading.value = true;
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify({
+                  action: 'verifyAdmin',
+                  email: loginForm.value.email,
+                  password: loginForm.value.password
+                })
+              });
+              const json = await res.json();
+              loading.value = false;
+              if (json.success) {
+                adminUser.value = json.data;
+                localStorage.setItem('emrs_admin_user', JSON.stringify(json.data));
+                Swal.fire('登入成功', `歡迎回來，${json.data.email}`, 'success');
+              } else {
+                Swal.fire('登入失敗', json.message, 'error');
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('登入異常', e.message, 'error');
+              return;
+            }
+          }
+
+          const foundMock = adminList.value.find(a => a.email.toLowerCase() === loginForm.value.email.toLowerCase());
+          if (foundMock && loginForm.value.password === 'admin123') {
+            adminUser.value = { email: foundMock.email, role: foundMock.role || 'SuperAdmin' };
+            localStorage.setItem('emrs_admin_user', JSON.stringify(adminUser.value));
+            Swal.fire('登入成功 (模擬)', '管理者已驗證通過', 'success');
+          } else {
+            Swal.fire('登入失敗', '預設帳號: admin@example.com 密碼: admin123', 'error');
+          }
+        };
+
+        const logoutAdmin = () => {
+          adminUser.value = null;
+          localStorage.removeItem('emrs_admin_user');
+        };
+
+        // Admin Actions: Approve Record
+        const handleApproveRecord = async (rec) => {
+          const resConfirm = await Swal.fire({
+            title: '確認核准借出？',
+            text: `即將核准「${rec.user_name}」借用 ${rec.borrow_qty} 件 [${rec.equipment_name || rec.equipment_id}]`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '核准借出',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          if (apiUrl.value) {
+            try {
+              loading.value = true;
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'approveBorrow', record_id: rec.record_id })
+              });
+              const json = await res.json();
+              if (json.success) {
+                Swal.fire('核准成功', '設備庫存已自動扣減', 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('核准失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          const eq = equipmentList.value.find(e => e.id === rec.equipment_id);
+          if (eq && eq.available_qty >= rec.borrow_qty) {
+            eq.available_qty -= rec.borrow_qty;
+            rec.status = '已出借';
+            Swal.fire('已核准借出 (模擬)', '庫存已成功自動扣減！', 'success');
+            fetchRecordsByEmail();
+          } else {
+            Swal.fire('無法核准', '庫存數量不足！', 'error');
+          }
+        };
+
+        // Admin Actions: Reject Record
+        const handleRejectRecord = async (rec) => {
+          const resConfirm = await Swal.fire({
+            title: '確認駁回申請？',
+            text: `將駁回「${rec.user_name}」的借用申請`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '駁回申請',
+            confirmButtonColor: '#e11d48',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          if (apiUrl.value) {
+            try {
+              loading.value = true;
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'rejectBorrow', record_id: rec.record_id })
+              });
+              const json = await res.json();
+              if (json.success) {
+                Swal.fire('已駁回', '已成功駁回此申請', 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('駁回失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          rec.status = '已駁回';
+          Swal.fire('已駁回申請 (模擬)', '', 'success');
+          fetchRecordsByEmail();
+        };
+
+        // Admin Actions: Confirm Return (Add stock back)
+        const handleReturnRecord = async (rec) => {
+          const resConfirm = await Swal.fire({
+            title: '確認歸還器材？',
+            text: `確認收到「${rec.user_name}」歸還之 ${rec.borrow_qty} 件 [${rec.equipment_name || rec.equipment_id}]`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '確認歸還 (庫存加回)',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          if (apiUrl.value) {
+            try {
+              loading.value = true;
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'returnEquipment', record_id: rec.record_id })
+              });
+              const json = await res.json();
+              if (json.success) {
+                Swal.fire('已完成歸還', '庫存已自動加回試算表', 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('操作失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          const eq = equipmentList.value.find(e => e.id === rec.equipment_id);
+          if (eq) {
+            eq.available_qty = Math.min(eq.total_qty, eq.available_qty + rec.borrow_qty);
+          }
+          rec.status = '已歸還';
+          rec.actual_return_time = new Date().toLocaleString();
+          Swal.fire('歸還成功 (模擬)', '設備庫存已自動補回！', 'success');
+          fetchRecordsByEmail();
+        };
+
+        // Equipment CRUD: Open Modal
+        const openEquipmentModal = (eqItem) => {
+          if (eqItem) {
+            isEditEq.value = true;
+            eqForm.value = { ...eqItem };
+          } else {
+            isEditEq.value = false;
+            eqForm.value = {
+              id: 'EQ-' + Math.floor(1000 + Math.random() * 9000),
+              name: '',
+              category: allCategories.value[0] || '筆記型電腦',
+              total_qty: 1,
+              available_qty: 1,
+              location: '器材室 A101',
+              status: '可借用'
+            };
+          }
+          showEqModal.value = true;
+        };
+
+        // Equipment CRUD: Save (Add or Update)
+        const saveEquipment = async () => {
+          loading.value = true;
+          const actionName = isEditEq.value ? 'updateEquipment' : 'addEquipment';
+          const payload = { action: actionName, ...eqForm.value };
+
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+              });
+              const json = await res.json();
+              if (json.success) {
+                showEqModal.value = false;
+                Swal.fire('儲存成功', json.message, 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('儲存失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          if (isEditEq.value) {
+            const index = equipmentList.value.findIndex(e => e.id === eqForm.value.id);
+            if (index !== -1) equipmentList.value[index] = { ...eqForm.value };
+          } else {
+            equipmentList.value.push({ ...eqForm.value });
+          }
+          showEqModal.value = false;
+          loading.value = false;
+          Swal.fire('儲存成功 (模擬)', '設備資料已變更', 'success');
+        };
+
+        // Equipment CRUD: Delete (WITH SAFETY CHECK)
+        const deleteEquipmentItem = async (eq) => {
+          const unreturnedQty = (eq.total_qty || 0) - (eq.available_qty || 0);
+          if (unreturnedQty > 0) {
+            Swal.fire({
+              title: '禁止刪除設備！',
+              html: `設備「<strong class="text-slate-800">${eq.name}</strong>」目前尚有 <strong class="text-rose-600 font-bold">${unreturnedQty} 件</strong> 處於出借狀態，無法執行刪除。<br><br><span class="text-xs text-slate-500">請確認借用人完成歸還手續並將庫存補回後，再行刪除。</span>`,
+              icon: 'error',
+              confirmButtonText: '我知道了'
+            });
+            return;
+          }
+
+          const activeBorrowRecords = recordsList.value.filter(r => String(r.equipment_id) === String(eq.id) && r.status === '已出借');
+          if (activeBorrowRecords.length > 0) {
+            Swal.fire({
+              title: '禁止刪除設備！',
+              html: `設備「<strong class="text-slate-800">${eq.name}</strong>」目前尚有 <strong class="text-rose-600 font-bold">${activeBorrowRecords.length} 筆</strong> 尚未歸還的「已出借」紀錄。<br><br><span class="text-xs text-slate-500">請先完成審核歸還手續後方可刪除。</span>`,
+              icon: 'error',
+              confirmButtonText: '我知道了'
+            });
+            return;
+          }
+
+          const resConfirm = await Swal.fire({
+            title: `確認刪除設備 ${eq.name}？`,
+            text: '該設備無任何出借中紀錄，刪除後將無法復原。歷史紀錄將保留設備名稱。',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '確認刪除',
+            confirmButtonColor: '#e11d48',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          if (apiUrl.value) {
+            try {
+              loading.value = true;
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'deleteEquipment', id: eq.id })
+              });
+              const json = await res.json();
+              if (json.success) {
+                Swal.fire('已刪除', json.message, 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('刪除失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          equipmentList.value = equipmentList.value.filter(item => item.id !== eq.id);
+          Swal.fire('已刪除 (模擬)', '設備已被移除，歷史紀錄將保持顯示設備名稱', 'success');
+        };
+
+        // Admin Accounts CRUD: Open Modal
+        const openAdminModal = (admItem) => {
+          if (admItem) {
+            isEditAdmin.value = true;
+            adminAccForm.value = {
+              email: admItem.email,
+              password: '',
+              role: admItem.role || 'Manager'
+            };
+          } else {
+            isEditAdmin.value = false;
+            adminAccForm.value = {
+              email: '',
+              password: '',
+              role: 'Manager'
+            };
+          }
+          showAdminModal.value = true;
+        };
+
+        // Admin Accounts CRUD: Save (Add or Update)
+        const saveAdminAccount = async () => {
+          loading.value = true;
+          const actionName = isEditAdmin.value ? 'updateAdmin' : 'addAdmin';
+          const payload = {
+            action: actionName,
+            email: adminAccForm.value.email,
+            newPassword: adminAccForm.value.password,
+            password: adminAccForm.value.password,
+            role: adminAccForm.value.role
+          };
+
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+              });
+              const json = await res.json();
+              if (json.success) {
+                showAdminModal.value = false;
+                Swal.fire('儲存成功', json.message, 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('操作失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          if (isEditAdmin.value) {
+            const idx = adminList.value.findIndex(a => a.email.toLowerCase() === adminAccForm.value.email.toLowerCase());
+            if (idx !== -1) {
+              adminList.value[idx].role = adminAccForm.value.role;
+            }
+          } else {
+            adminList.value.push({ email: adminAccForm.value.email, role: adminAccForm.value.role });
+          }
+
+          showAdminModal.value = false;
+          loading.value = false;
+          Swal.fire('儲存成功 (模擬)', '管理員帳號與密碼資料已異動', 'success');
+        };
+
+        // Admin Accounts CRUD: Delete
+        const deleteAdminAccount = async (adm) => {
+          const resConfirm = await Swal.fire({
+            title: `確認刪除管理員 ${adm.email}？`,
+            text: '被刪除後將無法登入系統後台',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: '確認刪除',
+            confirmButtonColor: '#e11d48',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          if (apiUrl.value) {
+            try {
+              loading.value = true;
+              const res = await fetch(apiUrl.value, {
+                method: 'POST',
+                body: JSON.stringify({ action: 'deleteAdmin', email: adm.email })
+              });
+              const json = await res.json();
+              if (json.success) {
+                Swal.fire('已刪除', json.message, 'success');
+                await loadInitialData();
+              } else {
+                Swal.fire('刪除失敗', json.message, 'error');
+                loading.value = false;
+              }
+              return;
+            } catch (e) {
+              loading.value = false;
+              Swal.fire('系統錯誤', e.message, 'error');
+              return;
+            }
+          }
+
+          adminList.value = adminList.value.filter(a => a.email.toLowerCase() !== adm.email.toLowerCase());
+          Swal.fire('已刪除 (模擬)', '管理員帳號已被移除', 'success');
+        };
+
+        // API URL & Google Client ID Settings
+        const saveApiUrl = async () => {
+          apiUrl.value = inputApiUrl.value.trim();
+          googleClientId.value = inputGoogleClientId.value.trim();
+          localStorage.setItem('emrs_api_url', apiUrl.value);
+          localStorage.setItem('emrs_google_client_id', googleClientId.value);
+          showApiModal.value = false;
+          await loadInitialData();
+        };
+
+        const clearApiUrl = () => {
+          apiUrl.value = '';
+          inputApiUrl.value = '';
+          localStorage.removeItem('emrs_api_url');
+          showApiModal.value = false;
+          loadInitialData();
+        };
+
+        const triggerGasSetup = async () => {
+          if (!apiUrl.value) return;
+          try {
+            loading.value = true;
+            const res = await fetch(`${apiUrl.value}?action=setup`);
+            const json = await res.json();
+            loading.value = false;
+            if (json.success) {
+              Swal.fire('初始化完成', 'Google 試算表工作表與標題已自動建立完成！', 'success');
+              await loadInitialData();
+            } else {
+              Swal.fire('初始化失敗', json.message, 'error');
+            }
+          } catch (e) {
+            loading.value = false;
+            Swal.fire('初始化錯誤', e.message, 'error');
+          }
+        };
+
+        // Manual trigger for 1-year old records cleanup and overdue email notifications
+        const triggerCleanupOldRecords = async () => {
+          const resConfirm = await Swal.fire({
+            title: '執行歷史紀錄清理與逾期 Email 通知？',
+            html: `系統將檢查超過 1 年 (365 天) 的借用紀錄：<br><br>
+            1. <strong>已結案（已歸還/已駁回）</strong>：自動從試算表中刪除紀錄。<br>
+            2. <strong>未歸還（已出借/待審核）</strong>：保留紀錄，並發送逾期通知 Email 給借用者及所有 SuperAdmin。`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '開始執行清理與通知',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          loading.value = true;
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(`${apiUrl.value}?action=cleanUpOldRecords`);
+              const json = await res.json();
+              loading.value = false;
+              if (json.success) {
+                Swal.fire({
+                  title: '清理與通知作業完成！',
+                  html: `<div class="text-left text-sm space-y-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <p class="font-bold text-slate-800">✅ ${json.message}</p>
+                    <p class="text-slate-500 text-xs">· 自動清理刪除筆數: <strong class="text-emerald-600">${json.deletedCount}</strong> 筆</p>
+                    <p class="text-slate-500 text-xs">· 未歸還逾期通知發送: <strong class="text-amber-600">${json.notifiedCount}</strong> 筆</p>
+                  </div>`,
+                  icon: 'success'
+                });
+                await loadInitialData();
+              } else {
+                Swal.fire('執行失敗', json.message, 'error');
+              }
+              return;
+            } catch (err) {
+              loading.value = false;
+              Swal.fire('系統錯誤', err.message, 'error');
+              return;
+            }
+          }
+
+          // Mock Mode
+          loading.value = false;
+          Swal.fire('清理完成 (無 API 模擬模式)', '已觸發模擬清理！正式部署於 GAS 環境後將自動執行並寄送郵件。', 'info');
+        };
+
+        // Manual trigger for borrow reminders email check (7-day & due-today)
+        const triggerCheckBorrowReminders = async () => {
+          const resConfirm = await Swal.fire({
+            title: '發送借用到期 Email 提醒？',
+            html: `系統將檢查所有「已出借」紀錄：<br><br>
+            1. <strong>距離到期剩 7 天</strong>：發送「距離借用到期只剩一週」提醒信。<br>
+            2. <strong>今日到期</strong>：發送「今日到期，請於今天下班前歸還」提醒信。`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '開始檢查並寄送',
+            cancelButtonText: '取消'
+          });
+          if (!resConfirm.isConfirmed) return;
+
+          loading.value = true;
+          if (apiUrl.value) {
+            try {
+              const res = await fetch(`${apiUrl.value}?action=checkBorrowReminders`);
+              const json = await res.json();
+              loading.value = false;
+              if (json.success) {
+                Swal.fire({
+                  title: '提醒郵件發送完成！',
+                  text: json.message,
+                  icon: 'success'
+                });
+              } else {
+                Swal.fire('發送失敗', json.message, 'error');
+              }
+              return;
+            } catch (err) {
+              loading.value = false;
+              Swal.fire('系統錯誤', err.message, 'error');
+              return;
+            }
+          }
+
+          // Mock Mode
+          loading.value = false;
+          Swal.fire('檢查完成 (無 API 模擬模式)', '已觸發模擬到期提醒檢查！正式部署於 GAS 環境後將自動寄送郵件。', 'info');
+        };
+
+        // Helpers
+        const getStatusBadgeClass = (status) => {
+          switch (status) {
+            case '待審核': return 'bg-amber-100 text-amber-800 border border-amber-300';
+            case '已出借': return 'bg-blue-100 text-blue-800 border border-blue-300';
+            case '已歸還': return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+            case '已駁回': return 'bg-rose-100 text-rose-800 border border-rose-300';
+            default: return 'bg-slate-100 text-slate-700';
+          }
+        };
+
+        const getStatusIconClass = (status) => {
+          switch (status) {
+            case '待審核': return 'fa-hourglass-half';
+            case '已出借': return 'fa-hand-holding';
+            case '已歸還': return 'fa-circle-check';
+            case '已駁回': return 'fa-circle-xmark';
+            default: return 'fa-circle-info';
+          }
+        };
+
+        onMounted(() => {
+          loadInitialData();
+        });
+
+        return {
+          isFileProtocol,
+          activeTab,
+          loading,
+          apiUrl,
+          inputApiUrl,
+          googleClientId,
+          inputGoogleClientId,
+          showApiModal,
+          googleUser,
+          showGoogleLoginModal,
+          customGoogleUser,
+          equipmentList,
+          recordsList,
+          adminList,
+          userRecords,
+          searchQuery,
+          selectedCategory,
+          categories,
+          allCategories,
+          filteredEquipment,
+          userQueryEmail,
+          recordTimeFilter,
+          recordStartDate,
+          recordEndDate,
+          recordCategoryFilter,
+          filteredUserRecords,
+          overdueRecordsList,
+          hasOverdueUnreturnedRecords,
+          showBorrowModal,
+          targetEquipment,
+          borrowForm,
+          adminUser,
+          isCurrentUserAdmin,
+          loginForm,
+          adminSubTab,
+          adminRecordFilter,
+          filteredAdminRecords,
+          showEqModal,
+          isEditEq,
+          eqForm,
+          showAdminModal,
+          isEditAdmin,
+          adminAccForm,
+          isEquipmentExist,
+          promptAddNewCategory,
+          onCategorySelectChange,
+          triggerGoogleSSO,
+          triggerGoogleOAuthPopup,
+          selectGoogleAccount,
+          loginCustomGoogleUser,
+          logoutGoogleUser,
+          loginAdminWithGoogleSSO,
+          loadInitialData,
+          refreshAllData,
+          fetchRecordsByEmail,
+          openBorrowModal,
+          submitBorrowRequest,
+          loginAdmin,
+          logoutAdmin,
+          handleApproveRecord,
+          handleRejectRecord,
+          handleReturnRecord,
+          openEquipmentModal,
+          saveEquipment,
+          deleteEquipmentItem,
+          openAdminModal,
+          saveAdminAccount,
+          deleteAdminAccount,
+          saveApiUrl,
+          clearApiUrl,
+          triggerGasSetup,
+          triggerCleanupOldRecords,
+          triggerCheckBorrowReminders,
+          checkOverdueAlert,
+          getStatusBadgeClass,
+          getStatusIconClass
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
