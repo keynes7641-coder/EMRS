@@ -930,6 +930,9 @@
             <label class="block text-xs font-bold text-slate-700 mb-1">Web App API URL (Google Apps Script)</label>
             <input v-model="inputApiUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec"
               class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-xs">
+            <p class="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              💡 <strong>跨電腦免設定建議：</strong>直接在 <code class="bg-indigo-50 text-indigo-700 px-1 font-mono font-bold">index.html</code> 程式碼檔頭中找到 <code class="bg-slate-100 text-slate-800 px-1 font-mono font-bold">DEFAULT_CONFIG.API_URL</code> 並填入您的 URL，推送至 GitHub 後所有電腦即可自動連線啟用！
+            </p>
           </div>
 
           <div>
@@ -948,9 +951,14 @@
               <i class="fa-solid fa-database mr-1"></i> 初始化 GAS 試算表 (自動建立 Sheet 頁籤)
             </button>
 
-            <button @click="clearApiUrl" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg text-xs transition">
-              切回「無伺服器展示模式 (Mock Mode)」
-            </button>
+            <div class="grid grid-cols-2 gap-2">
+              <button @click="resetToDefaultConfig" class="py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold rounded-lg text-xs transition border border-indigo-200" title="清除本機快取，改用 index.html 檔頭中的 DEFAULT_CONFIG">
+                重設為預設 Code 設定
+              </button>
+              <button @click="clearApiUrl" class="py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-lg text-xs transition">
+                切回展示模式 (Mock)
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -964,6 +972,15 @@
 
   <script>
     const { createApp, ref, computed, onMounted } = Vue;
+
+    // =========================================================================
+    // 預設系統 API 與 OAuth 設定 (全平台免設定預設值)
+    // 直接將您的 GAS Web App URL 填入下方 API_URL 欄位中，上傳至 GitHub 後全平台所有電腦即可免設定自動連線！
+    // =========================================================================
+    const DEFAULT_CONFIG = {
+      API_URL: 'https://script.google.com/macros/s/AKfycbzaehXC5uBtku80QJd4ow4HcNJqD9FoZnWcNQ7f1xtfcqtgX-20tzXEpXv5DxL-yRtj-g/exec', // 請貼上您的 GAS Web App URL (例如: 'https://script.google.com/macros/s/AKfycb.../exec')
+      GOOGLE_CLIENT_ID: '323770900458-nm9blfo9inklj936uai3i2skbaoh6afp.apps.googleusercontent.com' // 選填: 請貼上您的 Google OAuth Client ID
+    };
 
     // 預設 Mock Data (無 API 時展示用)
     const MOCK_EQUIPMENT = [
@@ -992,9 +1009,13 @@
         const isFileProtocol = ref(window.location.protocol === 'file:');
         const activeTab = ref('catalog');
         const loading = ref(false);
-        const apiUrl = ref(localStorage.getItem('emrs_api_url') || '');
+
+        const savedApiUrl = localStorage.getItem('emrs_api_url');
+        const apiUrl = ref(savedApiUrl !== null ? savedApiUrl : (DEFAULT_CONFIG.API_URL || ''));
         const inputApiUrl = ref(apiUrl.value);
-        const googleClientId = ref(localStorage.getItem('emrs_google_client_id') || '');
+
+        const savedClientId = localStorage.getItem('emrs_google_client_id');
+        const googleClientId = ref(savedClientId !== null ? savedClientId : (DEFAULT_CONFIG.GOOGLE_CLIENT_ID || ''));
         const inputGoogleClientId = ref(googleClientId.value);
         const showApiModal = ref(false);
 
@@ -1940,9 +1961,21 @@
         const clearApiUrl = () => {
           apiUrl.value = '';
           inputApiUrl.value = '';
-          localStorage.removeItem('emrs_api_url');
+          localStorage.setItem('emrs_api_url', '');
           showApiModal.value = false;
           loadInitialData();
+        };
+
+        const resetToDefaultConfig = () => {
+          localStorage.removeItem('emrs_api_url');
+          localStorage.removeItem('emrs_google_client_id');
+          apiUrl.value = DEFAULT_CONFIG.API_URL || '';
+          inputApiUrl.value = apiUrl.value;
+          googleClientId.value = DEFAULT_CONFIG.GOOGLE_CLIENT_ID || '';
+          inputGoogleClientId.value = googleClientId.value;
+          showApiModal.value = false;
+          loadInitialData();
+          Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: '已恢復為 index.html 預設設定', showConfirmButton: false, timer: 1800 });
         };
 
         const triggerGasSetup = async () => {
@@ -2149,6 +2182,7 @@
           deleteAdminAccount,
           saveApiUrl,
           clearApiUrl,
+          resetToDefaultConfig,
           triggerGasSetup,
           triggerCleanupOldRecords,
           triggerCheckBorrowReminders,
